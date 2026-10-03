@@ -3,7 +3,9 @@
 **Name:** Yi-Ning Huang
 **Andrew ID:** yiningh3
 
-Report webpage: http://www.andrew.cmu.edu/course/16-825/projects/yiningh3/proj2/
+Report webpage: 
+http://www.andrew.cmu.edu/course/16-825/projects/yiningh3/proj2/ or 
+https://yining213.github.io/16825-assignment2/
 
 The original assignment instructions are in [`handout.md`](handout.md).
 
