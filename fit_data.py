@@ -9,6 +9,7 @@ from pytorch3d.ops import sample_points_from_meshes
 from pytorch3d.structures import Meshes
 import dataset_location
 import torch
+import visualize
 
 
 
@@ -24,13 +25,14 @@ def get_args_parser():
     parser.add_argument('--w_chamfer', default=1.0, type=float)
     parser.add_argument('--w_smooth', default=0.1, type=float)
     parser.add_argument('--device', default='cuda', type=str) 
+    parser.add_argument('--vis_dir', default='output', type=str)
     return parser
 
 def fit_mesh(mesh_src, mesh_tgt, args):
     start_iter = 0
     start_time = time.time()
 
-    deform_vertices_src = torch.zeros(mesh_src.verts_packed().shape, requires_grad=True, device='cuda')
+    deform_vertices_src = torch.zeros(mesh_src.verts_packed().shape, requires_grad=True, device=args.device)
     optimizer = torch.optim.Adam([deform_vertices_src], lr = args.lr)
     print("Starting training !")
     for step in range(start_iter, args.max_iter):
@@ -130,6 +132,11 @@ def train_model(args):
         # fitting
         fit_voxel(voxels_src, voxels_tgt, args)
 
+        # visualization: voxels_src are logits, so threshold the probabilities
+        src_images = visualize.render_mesh_360(visualize.voxels_to_mesh(torch.sigmoid(voxels_src)), device=args.device)
+        tgt_images = visualize.render_mesh_360(visualize.voxels_to_mesh(voxels_tgt), device=args.device)
+        visualize.save_gif(os.path.join(args.vis_dir, 'q1_1_vox.gif'), src_images, tgt_images)
+
 
     elif args.type == "point":
         # initialization
@@ -139,6 +146,11 @@ def train_model(args):
 
         # fitting
         fit_pointcloud(pointclouds_src, pointclouds_tgt, args)        
+
+        # visualization
+        src_images = visualize.render_points_360(pointclouds_src, device=args.device)
+        tgt_images = visualize.render_points_360(pointclouds_tgt, device=args.device)
+        visualize.save_gif(os.path.join(args.vis_dir, 'q1_2_point.gif'), src_images, tgt_images)
     
     elif args.type == "mesh":
         # initialization
@@ -149,6 +161,11 @@ def train_model(args):
         # fitting
         fit_mesh(mesh_src, mesh_tgt, args)        
 
+        # visualization (fit_mesh deforms mesh_src in place)
+        src_images = visualize.render_mesh_360(visualize.make_mesh(mesh_src.verts_packed(), mesh_src.faces_packed()), device=args.device)
+        tgt_images = visualize.render_mesh_360(visualize.make_mesh(mesh_tgt.verts_packed(), mesh_tgt.faces_packed()), device=args.device)
+        visualize.save_gif(os.path.join(args.vis_dir, 'q1_3_mesh.gif'), src_images, tgt_images)
+
 
     
     
@@ -157,4 +174,5 @@ def train_model(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Model Fit', parents=[get_args_parser()])
     args = parser.parse_args()
+    os.makedirs(args.vis_dir, exist_ok=True)
     train_model(args)

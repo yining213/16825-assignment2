@@ -28,6 +28,10 @@ def get_args_parser():
     parser.add_argument("--load_checkpoint", action="store_true")
     parser.add_argument('--device', default='cuda', type=str) 
     parser.add_argument('--load_feat', action='store_true') 
+    parser.add_argument('--exp', default='', type=str, help='suffix for the checkpoint name, e.g. _3c')
+    parser.add_argument('--vox_dec', default='conv', choices=['conv', 'implicit'], type=str)
+    parser.add_argument('--point_dec', default='fc', choices=['fc', 'parametric'], type=str)
+    parser.add_argument('--n_patches', default=4, type=int, help='number of 2D patches for the parametric point decoder')
     return parser
 
 
@@ -96,7 +100,7 @@ def train_model(args):
     start_time = time.time()
 
     if args.load_checkpoint:
-        checkpoint = torch.load(f"checkpoint_{args.type}.pth")
+        checkpoint = torch.load(f"checkpoint_{args.type}{args.exp}.pth", map_location=args.device)
         model.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         start_iter = checkpoint["step"]
@@ -137,7 +141,7 @@ def train_model(args):
                     "model_state_dict": model.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
                 },
-                f"checkpoint_{args.type}.pth",
+                f"checkpoint_{args.type}{args.exp}.pth",
             )
 
         print(

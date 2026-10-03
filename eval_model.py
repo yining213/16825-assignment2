@@ -6,6 +6,7 @@ from r2n2_custom import R2N2
 from  pytorch3d.datasets.r2n2.utils import collate_batched_R2N2
 import dataset_location
 import pytorch3d
+import pytorch3d.structures
 from pytorch3d.ops import sample_points_from_meshes
 from pytorch3d.ops import knn_points
 import mcubes
@@ -14,6 +15,9 @@ import matplotlib.pyplot as plt
 from pytorch3d.transforms import Rotate, axis_angle_to_matrix
 import math
 import numpy as np
+import os
+import random
+import visualize
 
 def get_args_parser():
     parser = argparse.ArgumentParser('Singleto3D', add_help=False)
@@ -28,6 +32,13 @@ def get_args_parser():
     parser.add_argument('--load_checkpoint', action='store_true')  
     parser.add_argument('--device', default='cuda', type=str) 
     parser.add_argument('--load_feat', action='store_true') 
+    parser.add_argument('--vis_dir', default='vis', type=str)
+    parser.add_argument('--exp', default='', type=str, help='suffix for the checkpoint and plot names, e.g. _3c')
+    parser.add_argument('--vox_thresh', default=0.5, type=float, help='occupancy probability threshold for voxel predictions')
+    parser.add_argument('--seed', default=None, type=int, help='fix the random input view of each test sample, so runs see the same images')
+    parser.add_argument('--vox_dec', default='conv', choices=['conv', 'implicit'], type=str)
+    parser.add_argument('--point_dec', default='fc', choices=['fc', 'parametric'], type=str)
+    parser.add_argument('--n_patches', default=4, type=int, help='number of 2D patches for the parametric point decoder')
     return parser
 
 def preprocess(feed_dict, args):
@@ -48,7 +59,10 @@ def save_plot(thresholds, avg_f1_score, args):
     ax.set_xlabel('Threshold')
     ax.set_ylabel('F1-score')
     ax.set_title(f'Evaluation {args.type}')
-    plt.savefig(f'eval_{args.type}', bbox_inches='tight')
+    suffix = f'_t{args.vox_thresh:g}' if args.type == 'vox' and args.vox_thresh != 0.5 else ''
+    if args.seed is not None:
+        suffix += f'_seed{args.seed}'
+    plt.savefig(f'eval_{args.type}{args.exp}{suffix}.png', bbox_inches='tight')
 
 
 def compute_sampling_metrics(pred_points, gt_points, thresholds, eps=1e-8):
@@ -89,7 +103,10 @@ def evaluate(predictions, mesh_gt, thresholds, args):
     if args.type == "vox":
         voxels_src = predictions
         H,W,D = voxels_src.shape[2:]
-        vertices_src, faces_src = mcubes.marching_cubes(voxels_src.detach().cpu().squeeze().numpy(), isovalue=0.5)
+        vertices_src, faces_src = mcubes.marching_cubes(voxels_src.detach().cpu().squeeze().numpy(), isovalue=args.vox_thresh)
+        if len(faces_src) == 0:
+            # nothing above the threshold: predict a single point at the origin (F1 ~ 0)
+            return compute_sampling_metrics(torch.zeros(1, 1, 3), sample_points_from_meshes(mesh_gt, args.n_points).cpu(), thresholds)
         vertices_src = torch.tensor(vertices_src).float()
         faces_src = torch.tensor(faces_src.astype(int))
         mesh_src = pytorch3d.structures.Meshes([vertices_src], [faces_src])
@@ -138,12 +155,13 @@ def evaluate_model(args):
     thresholds = [0.01, 0.02, 0.03, 0.04, 0.05]
 
     avg_f1_score_05 = []
+    synsets = []
     avg_f1_score = []
     avg_p_score = []
     avg_r_score = []
 
     if args.load_checkpoint:
-        checkpoint = torch.load(f'checkpoint_{args.type}.pth')
+        checkpoint = torch.load(f'checkpoint_{args.type}{args.exp}.pth', map_location=args.device)
         model.load_state_dict(checkpoint['model_state_dict'])
         print(f"Succesfully loaded iter {start_iter}")
     
@@ -154,6 +172,9 @@ def evaluate_model(args):
 
         read_start_time = time.time()
 
+        if args.seed is not None:
+            # R2N2 picks a random view per load; with num_workers=0 the load happens here, in this process
+            random.seed(args.seed + step)
         feed_dict = next(eval_loader)
 
         images_gt, mesh_gt = preprocess(feed_dict, args)
@@ -164,11 +185,27 @@ def evaluate_model(args):
 
         metrics = evaluate(predictions, mesh_gt, thresholds, args)
 
-        # TODO:
-        # if (step % args.vis_freq) == 0:
-        #     # visualization block
-        #     #  rend = 
-        #     plt.imsave(f'vis/{step}_{args.type}.png', rend)
+        if (step % args.vis_freq) == 0:
+            # input RGB | prediction | ground truth mesh, plus a 360 gif of prediction | ground truth
+            recenter = args.type == "vox"  # evaluate() re-centers both voxel predictions and gt points
+            if args.type == "vox":
+                pred_mesh = visualize.voxels_to_mesh_eval_frame(predictions[0, 0], thresh=args.vox_thresh)
+                pred_images = visualize.render_mesh_360(pred_mesh, device=args.device)
+            elif args.type == "point":
+                pred_images = visualize.render_points_360(predictions[0], radius=0.02, device=args.device)
+            elif args.type == "mesh":
+                pred_mesh = visualize.make_mesh(predictions.verts_list()[0], predictions.faces_list()[0])
+                pred_images = visualize.render_mesh_360(pred_mesh, device=args.device)
+            gt_verts = mesh_gt.verts_list()[0].to(args.device)
+            if recenter:
+                gt_verts = gt_verts - gt_verts.mean(0)
+            gt_mesh = visualize.make_mesh(gt_verts, visualize.dedupe_faces(gt_verts, mesh_gt.faces_list()[0].to(args.device)))
+            gt_images = visualize.render_mesh_360(gt_mesh, device=args.device)
+            visualize.save_comparison_png(
+                os.path.join(args.vis_dir, f'{step}_{args.type}.png'),
+                feed_dict['images'][0].squeeze().cpu().numpy(), pred_images[0], gt_images[0],
+            )
+            visualize.save_gif(os.path.join(args.vis_dir, f'{step}_{args.type}.gif'), pred_images, gt_images)
       
 
         total_time = time.time() - start_time
@@ -176,6 +213,7 @@ def evaluate_model(args):
 
         f1_05 = metrics['F1@0.050000']
         avg_f1_score_05.append(f1_05)
+        synsets.append(feed_dict['synset_id'][0])
         avg_p_score.append(torch.tensor([metrics["Precision@%f" % t] for t in thresholds]))
         avg_r_score.append(torch.tensor([metrics["Recall@%f" % t] for t in thresholds]))
         avg_f1_score.append(torch.tensor([metrics["F1@%f" % t] for t in thresholds]))
@@ -185,10 +223,19 @@ def evaluate_model(args):
 
     avg_f1_score = torch.stack(avg_f1_score).mean(0)
 
+    # per-class breakdown (only differs from the overall average on the three-class dataset)
+    f1_by_class = {}
+    for synset, f1 in zip(synsets, avg_f1_score_05):
+        f1_by_class.setdefault(synset, []).append(float(f1))
+    for synset, f1s in sorted(f1_by_class.items()):
+        print(f"Class {synset}: {len(f1s)} samples, Avg F1@0.05: {sum(f1s) / len(f1s):.3f}")
+    print(f"Overall: {len(synsets)} samples, Avg F1@0.05: {torch.tensor(avg_f1_score_05).mean():.3f}")
+
     save_plot(thresholds, avg_f1_score,  args)
     print('Done!')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Singleto3D', parents=[get_args_parser()])
     args = parser.parse_args()
+    os.makedirs(args.vis_dir, exist_ok=True)
     evaluate_model(args)

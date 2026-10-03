@@ -1,160 +1,126 @@
 # 16-825 Assignment 2: Single View to 3D
 
-Goals: In this assignment, you will explore the types of loss and decoder functions for regressing to voxels, point clouds, and mesh representation from single view RGB input. 
+**Name:** Yi-Ning Huang
+**Andrew ID:** yiningh3
 
-## Table of Contents
-0. [Setup](#0-setup)
-1. [Exploring Loss Functions](#1-exploring-loss-functions)
-2. [Reconstructing 3D from single view](#2-reconstructing-3d-from-single-view)
-3. [Exploring other architectures / datasets](#3-exploring-other-architectures--datasets-choose-at-least-one-more-than-one-is-extra-credit)
-## 0. Setup
+Report webpage: http://www.andrew.cmu.edu/course/16-825/projects/yiningh3/proj2/
 
-### Environment (PyTorch / PyTorch3D)
+The original assignment instructions are in [`handout.md`](handout.md).
 
-Install **PyTorch and PyTorch3D following Assignment 1** or use the same venv/conda env. 
+Completed: Q1.1–1.3, Q2.1–2.5, Q3.1 (implicit decoder) and Q3.2 (parametric decoder). Q3.3 was not submitted.
 
-Then install the remaining packages:
+---
 
-```
+## Setup
+
+Use the same environment as Assignment 1 (PyTorch + PyTorch3D), then install the remaining packages:
+
+```bash
+conda create -n learning3d python=3.10
+conda activate learning3d
+pip install torch torchvision                # or the CUDA build for your machine
+pip install fvcore iopath
+pip install "git+https://github.com/facebookresearch/pytorch3d.git@stable"
 pip install -r requirements.txt
 ```
 
-If the PyTorch3D source install fails with `ModuleNotFoundError: No module named 'torch'`, retry with `--no-build-isolation` as in A1.
+The results were produced with Python 3.10, PyTorch 2.14 (CUDA 13.0), torchvision 0.29 and PyTorch3D 0.7.8.
 
-Please download and extract the dataset for this assigment. We provide two versions for the dataset, which are hosted on huggingface. 
+### Dataset
 
-[Here](https://huggingface.co/datasets/learning3dvision/r2n2_shapenet_dataset) for a single-class dataset which contains one class of chair. Total size 7.3G after unzipping.
+Download the single-class (chair) R2N2 dataset into this folder (git-lfs is not needed):
 
-Download the dataset using the following commands:
-
-```
-sudo apt install git-lfs
-git lfs install
-cd assignment2
-git clone https://huggingface.co/datasets/learning3dvision/r2n2_shapenet_dataset
-mv r2n2_shapenet_dataset/r2n2_shapenet_dataset.zip .
-unzip r2n2_shapenet_dataset.zip
+```bash
+wget -c https://huggingface.co/datasets/learning3dvision/r2n2_shapenet_dataset/resolve/main/r2n2_shapenet_dataset.zip
+unzip r2n2_shapenet_dataset.zip              # creates r2n2_shapenet_dataset/ (7.7 GB)
 ```
 
-[Here](https://huggingface.co/datasets/learning3dvision/r2n2_shapenet_dataset_full) for an extended version which contains three classes, chair, plane, and car.  Total size 48G after unzipping. Download this dataset with the following command:
+`dataset_location.py` looks for `r2n2_shapenet_dataset/` next to the code. To keep the dataset elsewhere, point
+`L3D_DATA_ROOT` at the folder that contains it:
 
+```bash
+export L3D_DATA_ROOT=/path/to/folder/containing/r2n2_shapenet_dataset
 ```
-git clone https://huggingface.co/datasets/learning3dvision/r2n2_shapenet_dataset_full
+
+---
+
+## Running the code
+
+`main.py` runs every question and collects all outputs in `results/`.
+
+```bash
+python main.py                  # run everything
+python main.py --list           # list the available questions
+python main.py -q 1 2.4         # run only the listed questions ("1" expands to 1.1, 1.2, 1.3)
+python main.py --dry_run        # print the commands main.py would run, without running them
+python main.py --retrain        # retrain models even if their checkpoint exists
+python main.py --device cpu     # force CPU (training on CPU is very slow)
+python main.py --num_workers 16 # more data-loader workers for training (default 8)
 ```
 
-Downloading the datasets may take a few minutes, but the process is not stuck. After unzipping, set the appropriate path references in `dataset_location.py` file [here](dataset_location.py).
+Model checkpoints are not included (they are 140–350 MB each). Any question that needs a model trains it first and
+saves `checkpoint_<type><exp>.pth` in this folder; later runs reuse it. Training took 40 min to 2.5 h per model on one
+GPU (voxel ~40 min, point and mesh ~1 h each, implicit ~2 h, parametric ~2.3 h). Data loading is CPU-bound, so with
+many workers set `OMP_NUM_THREADS=2` to avoid oversubscribing the CPU.
 
-The extended version is required for Q3.3; for other parts, using single-class version is sufficient.
+---
 
-Make sure you have installed the packages mentioned in `requirements.txt`.
+## Outputs
 
-## 1. Exploring loss functions (10 points)
-This section will involve defining a loss function, for fitting voxels, point clouds and meshes.
+| Question | Output in `results/` |
+|---|---|
+| 1.1 Fit a voxel grid | `q1/q1_1_vox.gif` (optimized left, ground truth right) |
+| 1.2 Fit a point cloud | `q1/q1_2_point.gif` |
+| 1.3 Fit a mesh | `q1/q1_3_mesh.gif` |
+| 2.1 Image to voxel grid | `q2_1/eval_vox.png` (F1 plot), `q2_1/examples/` (report examples), `q2_1/eval/` (every 200th test chair) |
+| 2.2 Image to point cloud | `q2_2/eval_point.png`, `q2_2/examples/`, `q2_2/eval/` |
+| 2.3 Image to mesh | `q2_3/eval_mesh.png`, `q2_3/examples/`, `q2_3/eval/` |
+| 2.4 Occupancy threshold | `q2_4/eval_vox_t<0.1–0.4>_seed0.png`, `q2_4/eval_vox_seed0.png` (0.5), `q2_4/q2_4_vox_thresh.png` |
+| 2.5 Interpretation | `q2_5/q2_5_view_f1.png`, `q2_5/q2_5_vox_orientation.png`, `q2_5/q2_5_interpolation.png` |
+| 3.1 Implicit decoder | `q3_1/eval_vox_implicit_seed0.png`, `q3_1/eval_vox_implicit_t0.3_seed0.png`, `q3_1/examples/` |
+| 3.2 Parametric decoder | `q3_2/eval_point_param_seed0.png`, `q3_2/eval_point_seed0.png` (2.2 decoder, same views), `q3_2/examples/`, `q3_2/q3_2_param_patches.png` |
 
-### 1.1. Fitting a voxel grid (4 points)
-In this subsection, we will define binary cross entropy loss that can help us <b>fit a 3D binary voxel grid</b>.
-Define the loss functions `voxel_loss` in [`losses.py`](losses.py) file. 
-For this you can use the pre-defined losses in pytorch library.
+Each example folder holds, per test chair, a still (input image | prediction | ground-truth mesh, rendered from the
+input camera) and a 360° GIF (prediction | ground truth). The average F1@0.05 is printed at the end of each
+evaluation (`Overall: … Avg F1@0.05`).
 
-Run the file `python fit_data.py --type 'vox'`, to fit the source voxel grid to the target voxel grid. 
+---
 
-Visualize the optimized voxel grid along-side the ground truth voxel grid using the tools learnt in previous section.
+## Settings used for the report
 
-### 1.2. Fitting a point cloud (3 points)
-In this subsection, we will define chamfer loss that can help us <b> fit a 3D point cloud </b>.
-Define the loss functions `chamfer_loss` in [`losses.py`](losses.py) file.
-<b>We expect you to write your own code for this and not use any pytorch3d utilities. You are allowed to use functions inside pytorch3d.ops.knn such as knn_gather or knn_points</b>
+- **Q1:** Adam, lr 1e-2, 3,000 iterations (`fit_data.py --lr 1e-2 --max_iter 3000`).
+- **Q2 / Q3 training:** ImageNet-pretrained ResNet18 encoder fine-tuned with the decoder; Adam (lr 4e-4, batch 32),
+  10,000 iterations, on a GPU. `--load_feat` was not used.
+- **Examples:** test chairs 240, 660 and 150, each from its most front-facing input view (`vis_examples.py --front`).
+- **Same input views:** R2N2 picks a random input view each time a chair is loaded, so the average F1 can differ by up to
+  about one point between evaluation runs. Comparisons across models or thresholds (Q2.4, Q2.5, Q3) use `--seed 0`, so every run sees the same
+  views. This is why the 2.1 / 2.2 models score 53.0 / 79.3 in those comparisons and 53.4 / 80.0 in the main evaluation.
+- **Voxel threshold:** voxel predictions are probabilities in eval mode; `--vox_thresh` (default 0.5) sets the
+  occupancy threshold used for marching cubes and the renders.
 
-Run the file `python fit_data.py --type 'point'`, to fit the source point cloud to the target point cloud. 
+---
 
-Visualize the optimized point cloud along-side the ground truth point cloud using the tools learnt in previous section.
+## Source files
 
-### 1.3. Fitting a mesh (3 points)
-In this subsection, we will define an additional smoothening loss that can help us <b> fit a mesh</b>.
-Define the loss functions `smoothness_loss` in [`losses.py`](losses.py) file.
+| File | Contents |
+|---|---|
+| `main.py` | Entry point. Runs any or all questions with the report's settings. |
+| `losses.py` | Q1 losses: `voxel_loss` (BCE with logits), `chamfer_loss` (from scratch), `smoothness_loss` (Laplacian). |
+| `fit_data.py` | Q1 fitting loop (course starter) plus 360° visualization of the result. |
+| `model.py` | `SingleViewto3D` and the decoders: `VoxelDecoder` (2.1), `PointDecoder` (2.2), `MeshDecoder` (2.3), `ImplicitDecoder` (3.1), `ParametricDecoder` (3.2). |
+| `train_model.py` | Training loop (course starter). Added `--exp`, `--vox_dec`, `--point_dec`, `--n_patches`; resumed checkpoints load onto `--device`. |
+| `eval_model.py` | Evaluation and F1 plot (course starter). Added visualization, `--seed`, `--vox_thresh`, per-class F1, a guard for empty voxel predictions, and checkpoint loading onto `--device` (so GPU-trained checkpoints evaluate on CPU). |
+| `vis_examples.py` | Renders chosen test chairs (`--indices`, `--front`) without running the full evaluation. |
+| `interpret.py` | Report figures for Q2.4, Q2.5 and Q3.2 (`--only thresholds / view / orientation / interp / patches`). |
+| `visualize.py` | Rendering helpers: voxel / point / mesh 360° renders, two-sided lighting, GIF and comparison images. |
+| `dataset_location.py` | Dataset paths (defaults to this folder, or `L3D_DATA_ROOT`). |
+| `r2n2_custom.py`, `utils_vox.py` | Course-provided dataset loader and voxel utilities (unchanged). |
 
-For this you can use the pre-defined losses in pytorch library.
+Each script can also be run on its own, for example:
 
-Run the file `python fit_data.py --type 'mesh'`, to fit the source mesh to the target mesh. 
-
-Visualize the optimized mesh along-side the ground truth mesh using the tools learnt in previous section.
-
-## 2. Reconstructing 3D from single view (80 points)
-This section will involve training a single view to 3D pipeline for voxels, point clouds and meshes.
-Refer to the `save_freq` argument in `train_model.py` to save the model checkpoint quicker/slower. 
-
-We also provide pretrained ResNet18 features of images to save computation and GPU resources required. Use `--load_feat` argument to use these features during training and evaluation. This should be False by default, and only use this if you are facing issues in getting GPU resources. You can also enable training on a CPU by the `device` argument. Also indiciate in your submission if you had to use this argument. 
-
-### 2.1. Image to voxel grid (20 points)
-In this subsection, we will define a neural network to decode binary voxel grids.
-Define the decoder network in [`model.py`](model.py) file for `vox` type, then reference your decoder in [`model.py`](model.py) file
-
-Run the file `python train_model.py --type 'vox'`, to train single view to voxel grid pipeline, feel free to tune the hyperparameters as per your need.
-
-After trained, visualize the input RGB, ground truth voxel grid and predicted voxel in `eval_model.py` file using:
-`python eval_model.py --type 'vox' --load_checkpoint`
-
-You need to add the respective visualization code in `eval_model.py`
-
-On your webpage, you should include visuals of any three examples in the test set. For each example show the input RGB, render of the predicted 3D voxel grid and a render of the ground truth mesh.
-
-Also report the F1@0.05 score and include the F1 plot, which is saved as `eval_vox.png`.
-
-### 2.2. Image to point cloud (20 points)
-In this subsection, we will define a neural network to decode point clouds.
-Similar as above, define the decoder network in [`model.py`](model.py) file for `point` type, then reference your decoder in [`model.py`](model.py) file.
-
-Run the file `python train_model.py --type 'point'`, to train single view to pointcloud pipeline, feel free to tune the hyperparameters as per your need.
-
-After trained, visualize the input RGB, ground truth point cloud and predicted  point cloud in `eval_model.py` file using:
-`python eval_model.py --type 'point' --load_checkpoint`
-
-You need to add the respective visualization code in `eval_model.py`.
-
-On your webpage, you should include visuals of any three examples in the test set. For each example show the input RGB, render of the predicted 3D point cloud and a render of the ground truth mesh.
-
-Also report the F1@0.05 score and include the F1 plot, which is saved as `eval_point.png`.
-
-### 2.3. Image to mesh (20 points)
-In this subsection, we will define a neural network to decode mesh.
-Similar as above, define the decoder network in [`model.py`](model.py) file for `mesh` type, then reference your decoder in [`model.py`](model.py) file.
-
-Run the file `python train_model.py --type 'mesh'`, to train single view to mesh pipeline, feel free to tune the hyperparameters as per your need. We also encourage the student to try different mesh initializations (i.e. replace `ico_sphere` by other shapes).
-
-After trained, visualize the input RGB, ground truth mesh and predicted mesh in `eval_model.py` file using:
-`python eval_model.py --type 'mesh' --load_checkpoint`
-
-You need to add the respective visualization code in `eval_model.py`.
-
-On your webpage, you should include visuals of any three examples in the test set. For each example show the input RGB, render of the predicted mesh and a render of the ground truth mesh.
-
-Also report the F1@0.05 score and include the F1 plot, which is saved as `eval_mesh.png`. Additionally, quantitatively compare the F1 score of 3D reconstruction for meshes vs pointcloud vs voxel grids. Provide an intuitive explaination justifying the comparision.
-
-### 2.4. Analyse effects of hyperparams variations (10 points)
-Analyse the results, by varying a hyperparameter of your choice.
-For example `n_points` or `vox_size` or `w_chamfer` or `initial mesh (ico_sphere)` etc.
-Try to be unique and conclusive in your analysis.
-
-### 2.5. Interpret your model (10 points)
-Simply seeing final predictions and numerical evaluations is not always insightful. Can you create some visualizations that help highlight what your learned model does? Be creative and think of what visualizations would help you gain insights. There is no `right' answer - although reading some papers to get inspiration might give you ideas.
-
-
-## 3. Exploring other architectures / datasets. (Choose at least one! More than one is extra credit)
-
-### 3.1 Implicit network (10 points)
-Implement an implicit decoder that takes in as input 3D locations and outputs the occupancy value. Start with a simple implementation of a network that predicts the occupancy given the image feture and a 3d coordinate as input. You will need to create a meshgrid of 32x32x32 in the normalized coordinate space of (-1,1)^3 to predict the full occupancy output. 
-
-Some papers for inspiration [[1](https://arxiv.org/abs/2003.04618),[2](https://arxiv.org/abs/1812.03828)]
-
-### 3.2 Parametric network (10 points)
-Implement a parametric function that takes in as input sampled 2D points and outputs their respective 3D points. 
-Some papers for inspiration [[1](https://arxiv.org/abs/1802.05384),[2](https://arxiv.org/abs/1811.10943)]
-
-### 3.3 Extended dataset for training (10 points)
-In the extended dataset, we provide a `split_3c.json` file that specifies the train/test split for the extended dataset.
-
-Update `dataset_location.py` so that we train the 3D reconstruction model on an extended dataset containing three classes (chair, car, and plane). Choose at least one of three models (voxel, point cloud, or mesh) to train and evaluate.
-
-After training, compare the quantitative and qualitative results of "training on one class" VS "training on three classes". Explain your thoughts and analysis.
-
-(Hints: for example, given the same testing samples in `chair` class, how does F1 score change comparing "training on one class" and "training on three classes"? How does the 3D consistency / diversity of the output samples change?)
+```bash
+python train_model.py --type point --max_iter 10001 --save_freq 1000
+python eval_model.py --type point --load_checkpoint
+python vis_examples.py --type mesh --front --indices 240 660 150
+python interpret.py --only view --out_dir results/q2_5
+```

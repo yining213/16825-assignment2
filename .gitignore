@@ -1,0 +1,37 @@
+# Datasets
+r2n2_shapenet_dataset/
+r2n2_shapenet_dataset_full/
+*.zip
+
+# Model checkpoints (hundreds of MB each)
+*.pth
+
+# Output images and GIFs (eval plots, renders, visualizations)
+*.png
+*.gif
+*.bak
+output/
+vis*/
+interpret/
+# keep the reference images that ship with the assignment
+!example_output/
+!example_output/*.png
+
+# Training / evaluation logs (Slurm and redirected output)
+logs/
+*.log
+slurm-*.out
+# keep the small result files interpret.py reads (view_consistency.json, voxel_orientation_test.json)
+!logs/*.json
+
+# Slurm job scripts (cluster-specific paths and resources)
+*.sbatch
+
+# Python
+__pycache__/
+*.pyc
+
+# Local editor / tool settings
+.DS_Store
+.vscode/
+.claude/settings.local.json
