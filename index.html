@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>16-825 Assignment 2: Single View to 3D</title>
+<style>
+  :root {
+    --bg: #fbfbfa;
+    --panel: #ffffff;
+    --ink: #1c1c1a;
+    --muted: #6b6b66;
+    --line: #e3e2dd;
+    --accent: #7a3e12;
+    --accent-soft: #f4ece4;
+    --code-bg: #f3f2ee;
+    --setup: #256abf;
+    --setup-soft: #eaf2fc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15150e;
+      --panel: #1d1d18;
+      --ink: #ecebe5;
+      --muted: #9d9c93;
+      --line: #33322b;
+      --accent: #e0a06a;
+      --accent-soft: #2a231c;
+      --code-bg: #26251f;
+      --setup: #86b6ef;
+      --setup-soft: #1b2636;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 0 20px 96px; }
+
+  header.page {
+    border-bottom: 1px solid var(--line);
+    padding-block: 56px 32px;
+    margin-bottom: 40px;
+  }
+  header.page .course {
+    font-size: 13px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--accent); font-weight: 600; margin: 0 0 10px;
+  }
+  header.page h1 { font-size: 34px; line-height: 1.2; margin: 0 0 14px; font-weight: 650; letter-spacing: -.015em; }
+  header.page .byline { color: var(--muted); margin: 0; font-size: 15px; }
+
+  nav.toc {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 20px 24px; margin-bottom: 48px;
+  }
+  nav.toc h2 { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; }
+  nav.toc ol { margin: 0; padding-left: 20px; }
+  nav.toc ol ol { padding-left: 18px; margin-top: 4px; columns: 2; column-gap: 32px; font-size: 14.5px; }
+  @media (max-width: 620px) { nav.toc ol ol { columns: 1; } }
+  nav.toc li { margin-bottom: 6px; break-inside: avoid; }
+  nav.toc a { color: var(--ink); text-decoration: none; border-bottom: 1px solid transparent; }
+  nav.toc a:hover { border-bottom-color: var(--accent); }
+
+  /* wide screens: contents become a fixed left sidebar; narrow screens keep it at the top */
+  @media (min-width: 1180px) {
+    body { padding-left: 260px; }
+    nav.toc {
+      position: fixed; top: 0; left: 0; bottom: 0; width: 260px; margin: 0;
+      overflow-y: auto; border: none; border-right: 1px solid var(--line); border-radius: 0;
+      padding: 40px 20px 32px 24px;
+    }
+    nav.toc ol ol { columns: 1; font-size: 14px; }
+    nav.toc > ol > li { margin-bottom: 14px; }
+  }
+
+  section.q { margin-bottom: 64px; scroll-margin-top: 24px; }
+  section.q > h2 {
+    font-size: 24px; margin: 0 0 4px; font-weight: 650; letter-spacing: -.01em;
+    padding-bottom: 10px; border-bottom: 2px solid var(--line);
+  }
+  .subq { margin-top: 36px; scroll-margin-top: 24px; }
+  .subq h3 { font-size: 18px; margin: 0 0 2px; font-weight: 620; }
+  .subq h4.example { font-size: 14px; margin: 20px 0 8px; color: var(--muted); font-weight: 600; }
+  .prompt {
+    color: var(--muted); font-size: 14.5px; margin: 8px 0 18px;
+    border-left: 3px solid var(--line); padding-left: 14px;
+  }
+
+  figure { margin: 0 0 12px; }
+  figure img { display: block; max-width: 100%; height: auto; margin-inline: auto; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); }
+  figcaption { font-size: 13.5px; color: var(--muted); margin-top: 8px; text-align: center; }
+
+  .row { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+  .row > figure { flex: 1 1 240px; min-width: 0; }
+
+  .pending {
+    display: flex; align-items: center; justify-content: center; text-align: center;
+    min-height: 168px; padding: 24px;
+    border: 1.5px dashed var(--line); border-radius: 8px;
+    color: var(--muted); font-size: 13.5px; background: var(--panel);
+  }
+  .pending code { font-size: 12.5px; }
+
+  .answer { background: var(--accent-soft); border-radius: 8px; padding: 16px 18px; margin: 16px 0; }
+  .answer h4 { margin: 0 0 8px; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+  .answer p:last-child, .answer ul:last-child { margin-bottom: 0; }
+
+  .metric { font-size: 15px; margin: 12px 0; }
+  .metric strong { font-size: 20px; font-variant-numeric: tabular-nums; }
+
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14.5px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+  th { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .table-wrap { overflow-x: auto; }
+
+  code, kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em;
+              background: var(--code-bg); padding: .15em .4em; border-radius: 4px; }
+  pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+
+
+  footer.page { border-top: 1px solid var(--line); padding-top: 20px; color: var(--muted); font-size: 13.5px; }
+
+  details.spin { margin: 4px 0 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+  details.spin > summary {
+    cursor: pointer; padding: 8px 14px; font-size: 13.5px; color: var(--accent); font-weight: 600;
+    list-style-position: inside;
+  }
+  details.spin > summary:hover { background: var(--accent-soft); border-radius: 8px; }
+  details.spin[open] > summary { border-bottom: 1px solid var(--line); border-radius: 8px 8px 0 0; }
+  details.spin > figure { margin: 12px 14px 14px; }
+  details.spin > .setup { padding: 4px 16px 2px; font-size: 15px; }
+  details.setup-toggle { border-color: var(--setup-soft); background: var(--setup-soft); }
+  details.setup-toggle > summary { color: var(--setup); }
+  details.setup-toggle > summary:hover { background: transparent; text-decoration: underline; }
+  details.setup-toggle[open] > summary { border-bottom-color: var(--setup); }
+</style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true}, {left: '\\(', right: '\\)', display: false}]});"></script>
+<style>.katex-display { margin: 0.6em 0; overflow-x: auto; overflow-y: hidden; }</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="page">
+  <p class="course">16-825 &middot; Learning for 3D Vision</p>
+  <h1>Assignment 2: Single View to 3D</h1>
+  <p class="byline">Name: <strong>Yi-Ning Huang</strong></p>
+  <p class="byline">Andrew ID: <strong>yiningh3</strong></p>
+</header>
+
+<nav class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#q1">Exploring Loss Functions</a>
+      <ol>
+        <li><a href="#q1-1">Fitting a Voxel Grid</a></li>
+        <li><a href="#q1-2">Fitting a Point Cloud</a></li>
+        <li><a href="#q1-3">Fitting a Mesh</a></li>
+      </ol>
+    </li>
+    <li><a href="#q2">Reconstructing 3D from a Single View</a>
+      <ol>
+        <li><a href="#q2-1">Image to Voxel Grid</a></li>
+        <li><a href="#q2-2">Image to Point Cloud</a></li>
+        <li><a href="#q2-3">Image to Mesh</a></li>
+        <li><a href="#q2-4">Effects of Hyperparameters</a></li>
+        <li><a href="#q2-5">Interpreting the Model</a></li>
+      </ol>
+    </li>
+    <li><a href="#q3">Exploring Other Architectures / Datasets</a>
+      <ol>
+        <li><a href="#q3-1">Implicit Network</a></li>
+        <li><a href="#q3-2">Parametric Network</a></li>
+      </ol>
+    </li>
+  </ol>
+</nav>
+
+<!-- ============================ 1 ============================ -->
+<section class="q" id="q1">
+  <h2>1. Exploring Loss Functions</h2>
+  <p class="prompt">Each GIF shows the optimized source (left) next to the ground-truth target (right), rendered
+    from 360&deg.</p>
+
+  <div class="subq" id="q1-1">
+    <h3>1.1 Fitting a Voxel Grid</h3>
+    <figure>
+      <img src="data/q1_1_vox.gif" alt="Optimized voxel grid beside the ground-truth voxel grid" width="512">
+      <figcaption>Optimized voxel grid (left) and ground truth (right).
+        Command: <code>python fit_data.py --type vox</code></figcaption>
+    </figure>
+    <div class="answer">
+      <h4>Loss</h4>
+      $$\mathcal{L}_{\text{vox}} = -\frac{1}{N}\sum_{i=1}^{N}\Big[\, y_i \log \sigma(x_i) + (1 - y_i)\log\big(1 - \sigma(x_i)\big) \Big]$$
+      <p>where \(x_i\) is the predicted logit of voxel \(i\), \(y_i \in \{0, 1\}\) its target occupancy, \(\sigma\) the
+        sigmoid, and \(N = 32^3\) the number of voxels.</p>
+    </div>
+  </div>
+
+  <div class="subq" id="q1-2">
+    <h3>1.2 Fitting a Point Cloud</h3>
+    <figure>
+      <img src="data/q1_2_point.gif" alt="Optimized point cloud beside the ground-truth point cloud" width="512">
+      <figcaption>Optimized point cloud (left) and ground truth (right).
+        Command: <code>python fit_data.py --type point</code></figcaption>
+    </figure>
+    <div class="answer">
+      <h4>Loss</h4>
+      $$\mathcal{L}_{\text{chamfer}} = \frac{1}{|S|}\sum_{p \in S}\min_{q \in T}\lVert p - q \rVert_2^2 + \frac{1}{|T|}\sum_{q \in T}\min_{p \in S}\lVert p - q \rVert_2^2$$
+      <p>where \(S\) is the predicted point cloud, \(T\) the target point cloud, and \(|S|\), \(|T|\) their numbers of points.</p>
+    </div>
+  </div>
+
+  <div class="subq" id="q1-3">
+    <h3>1.3 Fitting a Mesh</h3>
+    <figure>
+      <img src="data/q1_3_mesh.gif" alt="Optimized mesh beside the ground-truth mesh" width="512">
+      <figcaption>Optimized mesh deformed from an icosphere (left) and ground truth (right).
+        Command: <code>python fit_data.py --type mesh</code></figcaption>
+    </figure>
+    <div class="answer">
+      <h4>Loss</h4>
+      $$\mathcal{L} = w_{\text{chamfer}}\,\mathcal{L}_{\text{chamfer}} + w_{\text{smooth}}\,\mathcal{L}_{\text{smooth}}, \qquad \mathcal{L}_{\text{smooth}} = \frac{1}{|V|}\sum_{i \in V}\Big\lVert v_i - \frac{1}{|N(i)|}\sum_{j \in N(i)} v_j \Big\rVert_2$$
+      <p>where \(\mathcal{L}_{\text{chamfer}}\) is the 1.2 loss on points sampled from the predicted and target mesh
+        surfaces, \(V\) the set of mesh vertices, \(v_i\) the position of vertex \(i\), \(N(i)\) the vertices that share
+        an edge with it, \(w_{\text{chamfer}} = 1.0\) and \(w_{\text{smooth}} = 0.1\).</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 2 ============================ -->
+<section class="q" id="q2">
+  <h2>2. Reconstructing 3D from a Single View</h2>
+  <p class="prompt">Each example shows the input RGB image, the predicted 3D output, and the ground-truth mesh
+    for a sample from the test set.</p>
+
+  <div class="subq" id="q2-1">
+    <h3>2.1 Image to Voxel Grid</h3>
+
+    <h4 class="example">Example 1 &middot; test sample 240 &middot; F1@0.05 = 87.5</h4>
+    <figure><img src="data/q2_1_vox_ex1.png" alt="Input RGB, predicted voxels and ground-truth mesh for test sample 240"></figure>
+    <details class="spin">
+      <summary>Show 360&deg; view &mdash; left: predicted voxels, right: ground-truth mesh</summary>
+      <figure>
+        <img src="data/q2_1_vox_ex1.gif" alt="360 degree view of the predicted voxels beside the ground-truth mesh for test sample 240" loading="lazy" width="512">
+        <figcaption>Left: predicted voxels. Right: ground-truth mesh. 36 views, 10&deg; apart.</figcaption>
+      </figure>
+    </details>
+    <h4 class="example">Example 2 &middot; test sample 660 &middot; F1@0.05 = 75.8</h4>
+    <figure><img src="data/q2_1_vox_ex2.png" alt="Input RGB, predicted voxels and ground-truth mesh for test sample 660"></figure>
+    <details class="spin">
+      <summary>Show 360&deg; view &mdash; left: predicted voxels, right: ground-truth mesh</summary>
+      <figure>
+        <img src="data/q2_1_vox_ex2.gif" alt="360 degree view of the predicted voxels beside the ground-truth mesh for test sample 660" loading="lazy" width="512">
+        <figcaption>Left: predicted voxels. Right: ground-truth mesh. 36 views, 10&deg; apart.</figcaption>
+      </figure>
+    </details>
+    <h4 class="example">Example 3 &middot; test sample 150 &middot; F1@0.05 = 55.3</h4>
+    <figure><img src="data/q2_1_vox_ex3.png" alt="Input RGB, predicted voxels and ground-truth mesh for test sample 150"></figure>
+    <details class="spin">
+      <summary>Show 360&deg; view &mdash; left: predicted voxels, right: ground-truth mesh</summary>
+      <figure>
+        <img src="data/q2_1_vox_ex3.gif" alt="360 degree view of the predicted voxels beside the ground-truth mesh for test sample 150" loading="lazy" width="512">
+        <figcaption>Left: predicted voxels. Right: ground-truth mesh. 36 views, 10&deg; apart.</figcaption>
+      </figure>
+    </details>
+    <p class="prompt">Each example uses the chair&rsquo;s most front-facing input view; the prediction (occupancy &gt; 0.5)
+      and ground truth are rendered from the input camera.</p>
+
+    <p class="metric">F1@0.05: <strong>53.4</strong></p>
+    <figure>
+      <img src="data/eval_vox.png" alt="Average F1 score over the test set at thresholds from 0.01 to 0.05" width="480">
+      <figcaption>Average F1 over the 678 test chairs. Command:
+        <code>python eval_model.py --type vox --load_checkpoint</code></figcaption>
+    </figure>
+    <details class="spin setup-toggle">
+      <summary>Show setup &mdash; decoder, loss and training</summary>
+      <div class="setup">
+      <p>FC to 256&times;4&sup3;, three <code>ConvTranspose3d</code> (+BatchNorm, ReLU) up to 32&sup3;, then a
+        3&times;3&times;3 <code>Conv3d</code> to one logit per voxel. BCE-with-logits loss; Adam (lr 4e-4, batch 32), 10,000 iterations, encoder fine-tuned on a GPU; <code>--load_feat</code> not used.</p>
+      </div>
+    </details>
+  </div>
+
+  <div class="subq" id="q2-2">
+    <h3>2.2 Image to Point Cloud</h3>
+
+    <h4 class="example">Example 1 &middot; test sample 240 &middot; F1@0.05 = 92.0</h4>
+    <figure><img src="data/q2_2_point_ex1.png" alt="Input RGB, predicted point cloud and ground-truth mesh for test sample 240"></figure>
+    <details class="spin">
+      <summary>Show 360&deg; view &mdash; left: predicted point cloud, right: ground-truth mesh</summary>
+      <figure>
+        <img src="data/q2_2_point_ex1.gif" alt="360 degree view of the predicted point cloud beside the ground-truth mesh for test sample 240" loading="lazy" width="512">
+        <figcaption>Left: predicted point cloud. Right: ground-truth mesh. 36 views, 10&deg; apart.</figcaption>
+      </figure>
+    </details>
+    <h4 class="example">Example 2 &middot; test sample 660 &middot; F1@0.05 = 97.3</h4>
+    <figure><img src="data/q2_2_point_ex2.png" alt="Input RGB, predicted point cloud and ground-truth mesh for test sample 660"></figure>
+    <details class="spin">
+      <summary>Show 360&deg; view &mdash; left: predicted point cloud, right: ground-truth mesh</summary>
+      <figure>
+        <img src="data/q2_2_point_ex2.gif" alt="360 degree view of the predicted point cloud beside the ground-truth mesh for test sample 660" loading="lazy" width="512">
+        <figcaption>Left: predicted point cloud. Right: ground-truth mesh. 36 views, 10&deg; apart.</figcaption>
+      </figure>
+    </details>
+    <h4 class="example">Example 3 &middot; test sample 150 &middot; F1@0.05 = 47.9</h4>
+    <figure><img src="data/q2_2_point_ex3.png" alt="Input RGB, predicted point cloud and ground-truth mesh for test sample 150"></figure>
+    <details class="spin">
+      <summary>Show 360&deg; view &mdash; left: predicted point cloud, right: ground-truth mesh</summary>
+      <figure>
+        <img src="data/q2_2_point_ex3.gif" alt="360 degree view of the predicted point cloud beside the ground-truth mesh for test sample 150" loading="lazy" width="512">
+        <figcaption>Left: predicted point cloud. Right: ground-truth mesh. 36 views, 10&deg; apart.</figcaption>
+      </figure>
+    </details>
+    <p class="prompt">Each example uses the chair&rsquo;s most front-facing input view; the prediction (1,000 points) and
+      ground truth are rendered from the input camera.</p>
+
+    <p class="metric">F1@0.05: <strong>80.0</strong></p>
+    <figure>
+      <img src="data/eval_point.png" alt="Average F1 score over the test set at thresholds from 0.01 to 0.05" width="480">
+      <figcaption>Average F1 over the 678 test chairs. Command:
+        <code>python eval_model.py --type point --load_checkpoint</code></figcaption>
+    </figure>
+    <details class="spin setup-toggle">
+      <summary>Show setup &mdash; decoder, loss and training</summary>
+      <div class="setup">
+      <p>MLP 512 &rarr; 1024 &rarr; 2048 &rarr; 1000&times;3 (ReLU between layers). Chamfer loss against 1,000
+        points sampled from the GT mesh; Adam (lr 4e-4, batch 32), 10,000 iterations, encoder fine-tuned on a GPU; <code>--load_feat</code> not used.</p>
+      </div>
+    </details>
+  </div>
+
+  <div class="subq" id="q2-3">
+    <h3>2.3 Image to Mesh</h3>
+
+    <h4 class="example">Example 1 &middot; test sample 240 &middot; F1@0.05 = 97.1</h4>
+    <figure><img src="data/q2_3_mesh_ex1.png" alt="Input RGB, predicted mesh and ground-truth mesh for test sample 240"></figure>
+    <details class="spin">
+      <summary>Show 360&deg; view &mdash; left: predicted mesh, right: ground-truth mesh</summary>
+      <figure>
+        <img src="data/q2_3_mesh_ex1.gif" alt="360 degree view of the predicted mesh beside the ground-truth mesh for test sample 240" loading="lazy" width="512">
+        <figcaption>Left: predicted mesh. Right: ground-truth mesh. 36 views, 10&deg; apart.</figcaption>
+      </figure>
+    </details>
+    <h4 class="example">Example 2 &middot; test sample 660 &middot; F1@0.05 = 94.7</h4>
+    <figure><img src="data/q2_3_mesh_ex2.png" alt="Input RGB, predicted mesh and ground-truth mesh for test sample 660"></figure>
+    <details class="spin">
+      <summary>Show 360&deg; view &mdash; left: predicted mesh, right: ground-truth mesh</summary>
+      <figure>
+        <img src="data/q2_3_mesh_ex2.gif" alt="360 degree view of the predicted mesh beside the ground-truth mesh for test sample 660" loading="lazy" width="512">
+        <figcaption>Left: predicted mesh. Right: ground-truth mesh. 36 views, 10&deg; apart.</figcaption>
+      </figure>
+    </details>
+    <h4 class="example">Example 3 &middot; test sample 150 &middot; F1@0.05 = 45.7</h4>
+    <figure><img src="data/q2_3_mesh_ex3.png" alt="Input RGB, predicted mesh and ground-truth mesh for test sample 150"></figure>
+    <details class="spin">
+      <summary>Show 360&deg; view &mdash; left: predicted mesh, right: ground-truth mesh</summary>
+      <figure>
+        <img src="data/q2_3_mesh_ex3.gif" alt="360 degree view of the predicted mesh beside the ground-truth mesh for test sample 150" loading="lazy" width="512">
+        <figcaption>Left: predicted mesh. Right: ground-truth mesh. 36 views, 10&deg; apart.</figcaption>
+      </figure>
+    </details>
+    <p class="prompt">Each example uses the chair&rsquo;s most front-facing input view; the prediction and ground truth
+      are rendered from the input camera.</p>
+
+    <p class="metric">F1@0.05: <strong>72.7</strong></p>
+    <figure>
+      <img src="data/eval_mesh.png" alt="Average F1 score over the test set at thresholds from 0.01 to 0.05" width="480">
+      <figcaption>Average F1 over the 678 test chairs. Command:
+        <code>python eval_model.py --type mesh --load_checkpoint</code></figcaption>
+    </figure>
+    <details class="spin setup-toggle">
+      <summary>Show setup &mdash; decoder, loss and training</summary>
+      <div class="setup">
+      <p>Level-4 icosphere (2,562 vertices). MLP 512 &rarr; 1024 &rarr; 2048 &rarr; 2562&times;3 with
+        <code>tanh</code> predicts per-vertex offsets. Loss: chamfer (1,000 samples, <code>w_chamfer</code> = 1) +
+        Laplacian smoothing (<code>w_smooth</code> = 0.1); Adam (lr 4e-4, batch 32), 10,000 iterations, encoder fine-tuned on a GPU; <code>--load_feat</code> not used.</p>
+      </div>
+    </details>
+    <div class="answer">
+      <h4>Comparing voxels, point clouds and meshes</h4>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Representation</th><th>F1@0.05</th></tr></thead>
+          <tbody>
+            <tr><td>Voxel grid</td><td>53.4</td></tr>
+            <tr><td>Point cloud</td><td>80.0</td></tr>
+            <tr><td>Mesh</td><td>72.7</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul>
+        <li><strong>Point cloud (best):</strong> the chamfer loss directly optimizes what F1 measures, and free points
+          can cover thin, disconnected parts such as legs.</li>
+        <li><strong>Mesh:</strong> Also using chamfer loss as point cloud, but the fixed sphere topology can&rsquo;t open holes, so gaps between legs
+          become folded surfaces that miss the ground truth.</li>
+        <li><strong>Voxel (worst):</strong> at 32&sup3; one voxel is ~0.031 wide, close to the 0.05 threshold;
+          also thin parts rarely exceed 0.5 occupancy and vanish.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="subq" id="q2-4">
+    <h3>2.4 Effects of Hyperparameters</h3>
+    <p class="prompt">Varied: the occupancy threshold that turns the voxel model&rsquo;s probabilities into a surface
+      (<code>--vox_thresh</code>, default 0.5). Same checkpoint and the same input views for every setting
+      (<code>--seed 0</code>).</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Threshold</th><th>F1@0.05</th><th>Empty predictions</th></tr></thead>
+        <tbody>
+          <tr><td>0.1</td><td>39.0</td><td>0</td></tr>
+          <tr><td>0.2</td><td>57.1</td><td>0</td></tr>
+          <tr><td><strong>0.3</strong></td><td><strong>65.0</strong></td><td>3</td></tr>
+          <tr><td>0.4</td><td>61.6</td><td>7</td></tr>
+          <tr><td>0.5 (default)</td><td>53.0</td><td>25</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <figure>
+      <img src="data/q2_4_vox_thresh.png" alt="Voxel predictions for three chairs at thresholds 0.1, 0.3 and 0.5 beside the ground truth">
+      <figcaption>The same three test chairs thresholded at 0.1, 0.3 and 0.5, rendered from the input view.</figcaption>
+    </figure>
+    <div class="answer">
+      <h4>Analysis</h4>
+      <p>t=0.3 is the best statistically and visually, largely raising F1@0.05 from t=0.1 to t=0.3, and mostly tying with t=0.5 on each sample without retraining. 
+        About 96% of voxels are empty, so BCE
+        leaves the model under-confident on occupied ones. At t=0.5 thin parts (legs) drop out and 25 predictions are empty in overall test dataset;
+        at 0.1 the shape inflates and precision falls. Thin chairs gain most (sample 150: 64 &rarr; 83), while solid
+        chairs are slightly better at 0.5 (samples 240, 660). The threshold was swept on the test set, so 65.0 is
+        slightly optimistic. </p>
+    </div>
+  </div>
+
+  <div class="subq" id="q2-5">
+    <h3>2.5 Interpreting the Model</h3>
+
+    <h4 class="example">1. View consistency: does the prediction depend on the input view?</h4>
+    <figure>
+      <img src="data/q2_5_view_f1.png" alt="Line chart of mean F1 at 0.05 versus input view azimuth for the voxel, point and mesh models">
+      <figcaption>Mean F1@0.05 per 45&deg; bin of input azimuth, over 57 test chairs &times; all 10 views each.</figcaption>
+    </figure>
+    <figure id="fig-vox-orientation">
+      <img src="data/q2_5_vox_orientation.png" alt="Ground-truth meshes beside their ground-truth voxel grids for three test chairs whose voxels are rotated 90 degrees">
+      <figcaption><strong>Rotated ground-truth voxels.</strong> Examples where the dataset&rsquo;s ground-truth voxels are rotated relative to the mesh: the mesh&rsquo;s
+        long axis runs left to right, the voxel grid&rsquo;s runs front to back. Both are rendered from the same camera.</figcaption>
+    </figure>
+    <div class="answer">
+      <h4>What this shows</h4>
+      <p>Point and mesh are view-invariant (their curves are flat), so they infer the shape rather than memorizing a
+        viewpoint. The voxel model depends much more on the view: its F1 changes with the input angle and drops to 43
+        for front-facing inputs. A likely cause is its training targets: some ground-truth voxel grids in the original dataset are rotated relative to
+        their meshes (see <a href="#fig-vox-orientation">Rotated ground-truth voxels</a> above), so the model learns an
+        inconsistent orientation.</p>
+    </div>
+
+    <h4 class="example">2. Latent interpolation: is the feature space smooth?</h4>
+    <figure>
+      <img src="data/q2_5_interpolation.png" alt="Point and mesh shapes decoded from blends of two chairs' image features">
+      <figcaption>Decoding (1&minus;&alpha;)&middot;z<sub>A</sub> + &alpha;&middot;z<sub>B</sub> between a slim side chair
+        (A) and an armchair (B).</figcaption>
+    </figure>
+    <div class="answer">
+      <h4>What this shows</h4>
+      <p>The shapes change gradually (the chair widens, the seat deepens, the back shortens) with no jumps or broken
+        intermediates. The interpolated latent is the 512-d output of the ResNet18 encoder&rsquo;s global average-pooling
+        layer, so the encoder maps chairs to a continuous shape space rather than to isolated templates.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 3 ============================ -->
+<section class="q" id="q3">
+  <h2>3. Exploring Other Architectures / Datasets</h2>
+  <div class="subq" id="q3-1">
+    <h3>3.1 Implicit Network</h3>
+
+    <h4 class="example">Example 1 &middot; test sample 240 &middot; F1@0.05 = 93.8 (2.1 decoder 87.5)</h4>
+    <figure><img src="data/q3_1_implicit_ex1.png" alt="Input RGB, implicit-decoder occupancy and ground-truth mesh for test sample 240"></figure>
+    <details class="spin">
+      <summary>Show 360&deg; view &mdash; left: predicted occupancy (implicit decoder), right: ground-truth mesh</summary>
+      <figure>
+        <img src="data/q3_1_implicit_ex1.gif" alt="360 degree view of the implicit-decoder prediction beside the ground-truth mesh for test sample 240" loading="lazy" width="512">
+        <figcaption>Left: predicted occupancy (implicit decoder). Right: ground-truth mesh. 36 views, 10&deg; apart.</figcaption>
+      </figure>
+    </details>
+    <h4 class="example">Example 2 &middot; test sample 660 &middot; F1@0.05 = 88.5 (2.1 decoder 75.8)</h4>
+    <figure><img src="data/q3_1_implicit_ex2.png" alt="Input RGB, implicit-decoder occupancy and ground-truth mesh for test sample 660"></figure>
+    <details class="spin">
+      <summary>Show 360&deg; view &mdash; left: predicted occupancy (implicit decoder), right: ground-truth mesh</summary>
+      <figure>
+        <img src="data/q3_1_implicit_ex2.gif" alt="360 degree view of the implicit-decoder prediction beside the ground-truth mesh for test sample 660" loading="lazy" width="512">
+        <figcaption>Left: predicted occupancy (implicit decoder). Right: ground-truth mesh. 36 views, 10&deg; apart.</figcaption>
+      </figure>
+    </details>
+    <h4 class="example">Example 3 &middot; test sample 150 &middot; F1@0.05 = 57.9 (2.1 decoder 55.3)</h4>
+    <figure><img src="data/q3_1_implicit_ex3.png" alt="Input RGB, implicit-decoder occupancy and ground-truth mesh for test sample 150"></figure>
+    <details class="spin">
+      <summary>Show 360&deg; view &mdash; left: predicted occupancy (implicit decoder), right: ground-truth mesh</summary>
+      <figure>
+        <img src="data/q3_1_implicit_ex3.gif" alt="360 degree view of the implicit-decoder prediction beside the ground-truth mesh for test sample 150" loading="lazy" width="512">
+        <figcaption>Left: predicted occupancy (implicit decoder). Right: ground-truth mesh. 36 views, 10&deg; apart.</figcaption>
+      </figure>
+    </details>
+    <p class="prompt">Same chairs and input views as 2.1. Each image: input RGB | predicted occupancy (&gt; 0.5) |
+      ground-truth mesh, rendered from the input camera.</p>
+
+    <p class="metric">F1@0.05: <strong>52.3</strong> (occupancy &gt; 0.5) &middot; <strong>60.9</strong> (occupancy &gt; 0.3)</p>
+    <figure>
+      <img src="data/eval_vox_implicit.png" alt="Average F1 score of the implicit decoder at thresholds from 0.01 to 0.05" width="480">
+      <figcaption>Average F1 over the 678 test chairs (occupancy &gt; 0.5). Command:
+        <code>python eval_model.py --type vox --vox_dec implicit --exp _implicit --load_checkpoint</code></figcaption>
+    </figure>
+
+    <details class="spin setup-toggle">
+      <summary>Show setup &mdash; decoder, loss and training</summary>
+      <div class="setup">
+      <p>An MLP predicts the occupancy logit of a 3D point p from [p; z]. It is queried at all points of a 32&sup3;
+        grid in (&minus;1, 1)&sup3; and reshaped to 32&sup3;, so the BCE loss and evaluation from 2.1 are reused.
+        Layers: <code>Linear(3, 256)</code> on p plus <code>Linear(512, 256)</code> on z, two 256-wide hidden layers,
+        then 256 &rarr; 1 (ReLU between). Training as in 2.1.</p>
+      </div>
+    </details>
+    <div class="answer">
+      <h4>Result</h4>
+      <p>On the same input views, it matches 2.1&rsquo;s transposed-conv decoder at threshold 0.5 (52.3 vs 53.0; 2.1&rsquo;s
+        model re-evaluated on the views used in 2.4) with 42&times; fewer parameters (0.26 M vs 11.2 M), but loses more
+        thin parts (60.9 vs 65.0 at 0.3).</p>
+    </div>
+  </div>
+
+  <div class="subq" id="q3-2">
+    <h3>3.2 Parametric Network</h3>
+
+    <h4 class="example">Example 1 &middot; test sample 240 &middot; F1@0.05 = 91.8 (2.2 decoder 92.0)</h4>
+    <figure><img src="data/q3_2_param_ex1.png" alt="Input RGB, parametric-decoder point cloud and ground-truth mesh for test sample 240"></figure>
+    <details class="spin">
+      <summary>Show 360&deg; view &mdash; left: predicted point cloud (parametric decoder), right: ground-truth mesh</summary>
+      <figure>
+        <img src="data/q3_2_param_ex1.gif" alt="360 degree view of the parametric-decoder point cloud beside the ground-truth mesh for test sample 240" loading="lazy" width="512">
+        <figcaption>Left: predicted point cloud (parametric decoder). Right: ground-truth mesh. 36 views, 10&deg; apart.</figcaption>
+      </figure>
+    </details>
+    <h4 class="example">Example 2 &middot; test sample 660 &middot; F1@0.05 = 91.4 (2.2 decoder 97.3)</h4>
+    <figure><img src="data/q3_2_param_ex2.png" alt="Input RGB, parametric-decoder point cloud and ground-truth mesh for test sample 660"></figure>
+    <details class="spin">
+      <summary>Show 360&deg; view &mdash; left: predicted point cloud (parametric decoder), right: ground-truth mesh</summary>
+      <figure>
+        <img src="data/q3_2_param_ex2.gif" alt="360 degree view of the parametric-decoder point cloud beside the ground-truth mesh for test sample 660" loading="lazy" width="512">
+        <figcaption>Left: predicted point cloud (parametric decoder). Right: ground-truth mesh. 36 views, 10&deg; apart.</figcaption>
+      </figure>
+    </details>
+    <h4 class="example">Example 3 &middot; test sample 150 &middot; F1@0.05 = 52.1 (2.2 decoder 47.9)</h4>
+    <figure><img src="data/q3_2_param_ex3.png" alt="Input RGB, parametric-decoder point cloud and ground-truth mesh for test sample 150"></figure>
+    <details class="spin">
+      <summary>Show 360&deg; view &mdash; left: predicted point cloud (parametric decoder), right: ground-truth mesh</summary>
+      <figure>
+        <img src="data/q3_2_param_ex3.gif" alt="360 degree view of the parametric-decoder point cloud beside the ground-truth mesh for test sample 150" loading="lazy" width="512">
+        <figcaption>Left: predicted point cloud (parametric decoder). Right: ground-truth mesh. 36 views, 10&deg; apart.</figcaption>
+      </figure>
+    </details>
+    <p class="prompt">Same chairs and input views as 2.2. Each image: input RGB | predicted point cloud (1,000 points) |
+      ground-truth mesh, rendered from the input camera.</p>
+
+    <p class="metric">F1@0.05: <strong>75.8</strong></p>
+    <figure>
+      <img src="data/eval_point_param.png" alt="Average F1 score of the parametric decoder at thresholds from 0.01 to 0.05" width="480">
+      <figcaption>Average F1 over the 678 test chairs. Command:
+        <code>python eval_model.py --type point --point_dec parametric --exp _param --load_checkpoint</code></figcaption>
+    </figure>
+
+    <figure>
+      <img src="data/q3_2_param_patches.png" alt="Parametric-decoder predictions for three chairs, with each point colored by the patch that produced it">
+      <figcaption>Parametric-decoder predictions colored by patch (4 patches &times; 250 points), for the same three
+        chairs and input views as the examples, rendered from three azimuths.</figcaption>
+    </figure>
+    <details class="spin setup-toggle">
+      <summary>Show setup &mdash; decoder, loss and training</summary>
+      <div class="setup">
+      <p>AtlasNet-style decoder with 4 patches. Each patch is an MLP that maps a 2D sample (u, v) &isin; [0, 1]&sup2;
+        and z to a 3D point (<code>Linear(2, 256)</code> on (u, v) plus <code>Linear(512, 256)</code> on z, two
+        256-wide hidden layers, then 256 &rarr; 3). Each patch outputs 250 points, giving 1,000 in total; (u, v) are
+        resampled every training step and fixed at evaluation. Chamfer loss and training as in 2.2.</p>
+      </div>
+    </details>
+    <div class="answer">
+      <h4>Result</h4>
+      <p>On the same input views, it scores 75.8 vs 79.3 for 2.2&rsquo;s fully connected decoder (2.2&rsquo;s model
+        re-evaluated on the views used in 2.4), with 8&times; fewer parameters (1.06 M vs 8.8 M). 
+        Colored by patches, each of the four patches spreads over different parts (e.g. red covers left 2 legs, 
+        green covers right 2 legs and upper backrest), but the patches overlap heavily, so no patch specializes in a single part.</p>
+    </div>
+  </div>
+</section>
+
+<footer class="page">
+  <p>The code for this assignment is available on the repository's <code>master</code> branch.</p>
+</footer>
+
+</div>
+</body>
+</html>
